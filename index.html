@@ -2961,65 +2961,54 @@ async function loadHistory(){
   if(!el)return;
 
   try{
-    el.innerHTML=`<div style="color:var(--muted);font-size:12px;padding:2rem 0;text-align:center">
-      <div class="spin" style="display:inline-block;margin-bottom:8px"></div><br>Walking season history...</div>`;
+    const updateStatus=(msg)=>{
+      if(el) el.innerHTML=`<div style="color:var(--muted2);font-size:12px;padding:2rem 0;text-align:center">
+        <div class="spin" style="display:inline-block;margin-bottom:10px"></div><br>${msg}</div>`;
+    };
+    updateStatus('Finding season history...');
 
-    // Walk the chain starting from 2025
-    const seasons=[];
-    let currentId=LEAGUE; // 2025 ID
+    // Step 1: Walk the chain to collect all league IDs + basic info (fast, sequential by necessity)
+    const leagueInfos=[];
+    let currentId=LEAGUE;
     let safety=0;
-
-    while(currentId && safety<10){
+    while(currentId && safety<8){
       safety++;
       const info=await fetchJ(`https://api.sleeper.app/v1/league/${currentId}`).catch(()=>null);
-      if(!info)break;
+      if(!info) break;
+      leagueInfos.push({id:currentId, info});
+      currentId=info.previous_league_id||null;
+    }
 
-      // Fetch rosters for this season to get the roster_id->username map
-      const rosters=await fetchJ(`https://api.sleeper.app/v1/league/${currentId}/rosters`).catch(()=>[]);
-      // We need usernames from /league/{id}/users
-      const users=await fetchJ(`https://api.sleeper.app/v1/league/${currentId}/users`).catch(()=>[]);
+    updateStatus(`Loading ${leagueInfos.length} seasons in parallel...`);
+
+    // Step 2: Fetch all season data in parallel
+    const seasonResults=await Promise.all(leagueInfos.map(async ({id,info})=>{
+      const [rosters,users,weekResults]=await Promise.all([
+        fetchJ(`https://api.sleeper.app/v1/league/${id}/rosters`).catch(()=>[]),
+        fetchJ(`https://api.sleeper.app/v1/league/${id}/users`).catch(()=>[]),
+        Promise.all(Array.from({length:18},(_,i)=>
+          fetchJ(`https://api.sleeper.app/v1/league/${id}/transactions/${i+1}`).catch(()=>[])
+        ))
+      ]);
+
       const userById={};
       users.forEach(u=>{ userById[u.user_id]=u.display_name||u.username; });
-
       const rosterMap={};
       rosters.forEach(r=>{ rosterMap[r.roster_id]=userById[r.owner_id]||('Roster '+r.roster_id); });
-
-      // Fetch FAAB remaining
       const faabLeft={};
       rosters.forEach(r=>{ faabLeft[r.roster_id]=BUDGET-(r.settings?.waiver_budget_used??0); });
 
-      // Fetch all 18 weeks of transactions
-      const weekResults=await Promise.all(
-        Array.from({length:18},(_,i)=>
-          fetchJ(`https://api.sleeper.app/v1/league/${currentId}/transactions/${i+1}`).catch(()=>[])
-        )
-      );
-
-      // Parse season data
       const {stats,weeklyData}=parseSeasonData(weekResults,rosterMap,APP.playerMap,faabLeft);
-
-      // Determine season winner from metadata or settings
       const winner=info.metadata?.latest_league_winner_roster_id
         ? rosterMap[info.metadata.latest_league_winner_roster_id]
         : null;
 
-      seasons.push({
-        id:currentId,
-        season:info.season||'?',
-        name:info.name||'The Boys League',
-        rosterMap,
-        stats,
-        weeklyData,
-        faabLeft,
-        winner
-      });
+      return{id, season:info.season||'?', name:info.name||'The Boys League',
+             rosterMap, stats, weeklyData, faabLeft, winner};
+    }));
 
-      currentId=info.previous_league_id||null;
-    }
-
-    // Sort newest-first (already is, but ensure)
-    APP.historySeasons=seasons;
-    renderHistory(seasons);
+    APP.historySeasons=seasonResults;
+    renderHistory(seasonResults);
 
   }catch(err){
     if(el) el.innerHTML=`<div style="color:var(--red);font-size:11px;padding:1rem">Failed to load history: ${err.message}</div>`;
