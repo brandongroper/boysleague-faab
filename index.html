@@ -839,7 +839,7 @@ function goToWeek(week){
 function buildOverbidAnalysis(name, season=2025){
   const wonContested=[];    // won vs at least one other bidder
   const wonUncontested=[];  // won with zero other bidders
-  const weeklySource=season===2024?APP.weeklyData2024:APP.weeklyData;
+  const _whs=APP.historySeasons?.find(hs=>String(hs.season)===String(season)); const weeklySource=(season===2025||season==="2025")?APP.weeklyData:(_whs?.weeklyData||APP.weeklyData);
 
   Object.entries(weeklySource).forEach(([weekStr,wd])=>{
     const week=parseInt(weekStr);
@@ -1088,8 +1088,8 @@ function bidRow(b){
 
 function buildFailedBidsWithContext(name, season){
   // For each failed bid, find the winning bid on the same player that week
-  const s = season===2024 ? APP.stats2024[name] : APP.stats[name];
-  const weeklySource = season===2024 ? APP.weeklyData2024 : APP.weeklyData;
+  const histS=APP.historySeasons?.find(hs=>String(hs.season)===String(season)); const s = season===2025||season==="2025" ? APP.stats[name] : (histS?.stats[name]||APP.stats[name]);
+  const histS2=APP.historySeasons?.find(hs=>String(hs.season)===String(season)); const weeklySource = (season===2025||season==="2025") ? APP.weeklyData : (histS2?.weeklyData||APP.weeklyData);
   if(!s) return [];
 
   return s.failedBids.map(fb=>{
@@ -1197,17 +1197,15 @@ function switchPosIntelSeason(name, season){
   const uid=name.replace(/[^a-z0-9]/gi,'');
   const el=document.getElementById('posintel-'+uid);
   if(el) el.innerHTML=renderPositionIntelligence(name, season);
-  (Object.keys(APP.stats2024).length>0?['2024','2025','all']:['2025','all']).forEach(y=>{
+  const histYears=(APP.historySeasons||[]).map(s=>String(s.season)).filter(y=>y!=='2025');
+  [...['2025',...histYears],'all'].forEach(y=>{
     const btn=document.getElementById('posintel-btn-'+y+'-'+uid);
     if(!btn)return;
-    const isActive=(y==='all'&&season==='all')||(y!=='all'&&parseInt(y)===season);
-    if(isActive){
-      btn.style.background='var(--lime)';btn.style.color='#0d0d0f';
-      btn.style.borderColor='var(--lime)';btn.style.fontWeight='500';
-    } else {
-      btn.style.background='transparent';btn.style.color='var(--muted2)';
-      btn.style.borderColor='var(--b2)';btn.style.fontWeight='400';
-    }
+    const isActive=(y==='all'&&season==='all')||(y!=='all'&&String(season)===y);
+    btn.style.background=isActive?'var(--lime)':'transparent';
+    btn.style.color=isActive?'#0d0d0f':'var(--muted2)';
+    btn.style.borderColor=isActive?'var(--lime)':'var(--b2)';
+    btn.style.fontWeight=isActive?'500':'400';
   });
 }
 
@@ -1243,86 +1241,72 @@ function showManagerDetail(name){
     </div>
     <div class="sec" style="margin-top:0;display:flex;align-items:center;justify-content:space-between">
       <span>Position intelligence</span>
-      <div style="display:flex;gap:4px">
-        <button id="posintel-btn-2025-${name.replace(/[^a-z0-9]/gi,'')}" onclick="switchPosIntelSeason('${name}',2025)" style="font-size:9px;padding:2px 8px;border-radius:4px;border:.5px solid var(--lime);background:var(--lime);color:#0d0d0f;cursor:pointer;font-family:'DM Mono',monospace;font-weight:500">2025</button>
-        <button id="posintel-btn-2024-${name.replace(/[^a-z0-9]/gi,'')}" onclick="switchPosIntelSeason('${name}',2024)" style="font-size:9px;padding:2px 8px;border-radius:4px;border:.5px solid var(--b2);background:transparent;color:var(--muted2);cursor:pointer;font-family:'DM Mono',monospace">2024</button>
-        <button id="posintel-btn-all-${name.replace(/[^a-z0-9]/gi,'')}" onclick="switchPosIntelSeason('${name}','all')" style="font-size:9px;padding:2px 8px;border-radius:4px;border:.5px solid var(--b2);background:transparent;color:var(--muted2);cursor:pointer;font-family:'DM Mono',monospace">All time</button>
+      <div style="display:flex;gap:4px;flex-wrap:wrap">
+        ${(()=>{
+          const histYears=(APP.historySeasons||[]).map(s=>String(s.season)).filter(y=>y!=='2025');
+          const allYears=['2025',...histYears];
+          const uid=name.replace(/[^a-z0-9]/gi,'');
+          return[...allYears,'all'].map((y,i)=>{
+            const isActive=i===0;
+            const label=y==='all'?'All time':y;
+            const seasonArg=y==='all'?'all':y;
+            return`<button id="posintel-btn-${y}-${uid}" onclick="switchPosIntelSeason('${name}','${seasonArg}')" style="font-size:9px;padding:2px 8px;border-radius:4px;border:.5px solid ${isActive?'var(--lime)':'var(--b2)'};background:${isActive?'var(--lime)':'transparent'};color:${isActive?'#0d0d0f':'var(--muted2)'};cursor:pointer;font-family:'DM Mono',monospace;font-weight:${isActive?500:400}">${label}</button>`;
+          }).join('');
+        })()}
       </div>
     </div>
     <div id="posintel-${name.replace(/[^a-z0-9]/gi,'')}">${renderPositionIntelligence(name, 2025)}</div>
     <div class="sec">2025 failed bids — what you lost and who beat you</div>
     ${renderFailedBidsSection(name, 2025)}
-    ${Object.keys(APP.stats2024).length>0?`<div class="sec">2024 failed bids</div>${renderFailedBidsSection(name,2024)}<div class="sec">2024 vs 2025 — year over year</div>`:`<div class="sec">Season summary — 2025</div>`}
     ${(()=>{
-      const s24=APP.stats2024[name]||{totalSpent:0,bidCount:0,avgBid:0,remainingFAAB:null,posSpend:{}};
-      const s25=APP.stats[name];
-      const delta=s25.totalSpent-s24.totalSpent;
-      const deltaColor=Math.abs(delta)<5?'var(--muted2)':delta>0?'var(--red)':'var(--green)';
-      const max2=Math.max(s24.totalSpent,s25.totalSpent,1);
-      const allPos=[...new Set([...Object.keys(s24.posSpend||{}),...Object.keys(s25.posSpend||{})])];
-      return`<div style="background:var(--s1);border:.5px solid var(--b1);border-radius:10px;padding:1rem 1.25rem;margin-bottom:.5rem">
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:8px;margin-bottom:1rem">
-          <div class="dmet"><div class="dmet-v" style="color:var(--muted2)">${fmt(s24.totalSpent)}</div><div class="dmet-l">2024 spent</div></div>
-          <div class="dmet"><div class="dmet-v" style="color:var(--lime)">${fmt(s25.totalSpent)}</div><div class="dmet-l">2025 spent</div></div>
-          <div class="dmet"><div class="dmet-v" style="color:${deltaColor}">${delta>=0?'+':''}${fmt(delta)}</div><div class="dmet-l">Δ spend</div></div>
-          <div class="dmet"><div class="dmet-v" style="color:var(--muted2)">${s24.bidCount}</div><div class="dmet-l">2024 adds</div></div>
-          <div class="dmet"><div class="dmet-v" style="color:var(--lime)">${s25.bidCount}</div><div class="dmet-l">2025 adds</div></div>
-          <div class="dmet"><div class="dmet-v" style="color:${delta>10?'var(--red)':delta<-10?'var(--green)':'var(--muted2)'}">${delta>10?'More aggressive':delta<-10?'More conservative':'Consistent'}</div><div class="dmet-l">Trend</div></div>
-        </div>
-        <div style="display:flex;align-items:flex-end;gap:8px;height:50px;margin-bottom:8px">
-          <div style="font-size:10px;color:var(--muted);width:30px;text-align:right;padding-bottom:2px">$100</div>
-          <div style="flex:1;position:relative;height:100%">
-            <div style="position:absolute;bottom:0;left:0;width:100%;height:.5px;background:var(--b2)"></div>
-            <div style="display:flex;align-items:flex-end;gap:4px;height:100%">
-              <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px">
-                <div style="font-size:9px;color:var(--muted2)">${fmt(s24.totalSpent)}</div>
-                <div style="width:100%;background:rgba(96,165,250,.5);border-radius:2px 2px 0 0;height:${Math.round(s24.totalSpent/100*40)}px"></div>
-              </div>
-              <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px">
-                <div style="font-size:9px;color:var(--muted2)">${fmt(s25.totalSpent)}</div>
-                <div style="width:100%;background:var(--lime);border-radius:2px 2px 0 0;height:${Math.round(s25.totalSpent/100*40)}px;opacity:.8"></div>
-              </div>
-            </div>
+      const allSeasons=(APP.historySeasons||[]).slice().reverse();
+      if(!allSeasons.length) return '<div class="sec">Season summary — 2025</div>';
+      const s25=APP.stats[name]||{totalSpent:0,bidCount:0,posSpend:{}};
+      const seasons2=[...allSeasons.map(s=>({year:String(s.season),st:s.stats[name]||{totalSpent:0,bidCount:0,posSpend:{}}})),{year:'2025',st:s25}];
+      const allPos=[...new Set(seasons2.flatMap(s=>Object.keys(s.st.posSpend||{})))];
+      return`
+        <div class="sec">FAAB spend — all seasons</div>
+        <div style="background:var(--s1);border:.5px solid var(--b1);border-radius:10px;padding:1rem 1.25rem;margin-bottom:.5rem">
+          <div style="display:grid;grid-template-columns:repeat(${seasons2.length},1fr);gap:6px;margin-bottom:12px">
+            ${seasons2.map(({year,st})=>{
+              const c=COLORS_SEASON[year]||'var(--muted)';
+              return`<div class="dmet"><div class="dmet-v" style="color:${c}">${fmt(st.totalSpent)}</div><div class="dmet-l">${year}</div><div style="font-size:9px;color:var(--muted)">${st.bidCount||0} adds</div></div>`;
+            }).join('')}
           </div>
-        </div>
-        <div style="display:flex;gap:12px;font-size:10px;color:var(--muted)">
-          <span><span style="display:inline-block;width:10px;height:10px;background:rgba(96,165,250,.5);border-radius:2px;margin-right:4px;vertical-align:middle"></span>2024</span>
-          <span><span style="display:inline-block;width:10px;height:10px;background:var(--lime);border-radius:2px;margin-right:4px;vertical-align:middle;opacity:.8"></span>2025</span>
-        </div>
-        ${allPos.length>0?`<div style="margin-top:1rem;border-top:.5px solid var(--b1);padding-top:1rem">
-          <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px">Position spend shift</div>
-          ${allPos.sort((a,b)=>((s25.posSpend[b]||0)+(s24.posSpend[b]||0))-((s25.posSpend[a]||0)+(s24.posSpend[a]||0))).map(pos=>{
-            const v24=s24.posSpend?.[pos]||0;
-            const v25=s25.posSpend?.[pos]||0;
-            const d=v25-v24;
-            const maxV=Math.max(v24,v25,1);
-            return`<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">
-              <span style="font-size:10px;width:28px;color:${posColor(pos)}">${pos}</span>
-              <div style="flex:1;display:flex;flex-direction:column;gap:2px">
-                <div style="height:4px;background:var(--s2);border-radius:2px;overflow:hidden">
-                  <div style="height:100%;width:${Math.round(v24/100*100)}%;background:rgba(96,165,250,.4);border-radius:2px"></div>
+          <div style="display:flex;align-items:flex-end;gap:4px;height:50px;margin-bottom:8px">
+            ${seasons2.map(({year,st})=>{
+              const h=st.totalSpent>0?Math.max(Math.round(st.totalSpent/100*46),2):0;
+              const c=COLORS_SEASON[year]||'var(--muted)';
+              return`<div style="flex:1;height:${h}px;background:${c};border-radius:2px 2px 0 0;opacity:.8;align-self:flex-end"></div>`;
+            }).join('')}
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;font-size:9px;color:var(--muted)">
+            ${seasons2.map(({year})=>`<span><span style="display:inline-block;width:8px;height:8px;background:${COLORS_SEASON[year]||'var(--muted)'};border-radius:1px;margin-right:3px;vertical-align:middle;opacity:.8"></span>${year}</span>`).join('')}
+          </div>
+          ${allPos.length>0?`<div style="margin-top:1rem;border-top:.5px solid var(--b1);padding-top:1rem">
+            <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px">Position spend — all seasons</div>
+            ${allPos.sort((a,b)=>seasons2.reduce((t,s)=>t+(s.st.posSpend?.[b]||0),0)-seasons2.reduce((t,s)=>t+(s.st.posSpend?.[a]||0),0)).map(pos=>{
+              return`<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                <span style="font-size:10px;width:28px;color:${posColor(pos)}">${pos}</span>
+                <div style="flex:1;display:flex;flex-direction:column;gap:2px">
+                  ${seasons2.map(({year,st})=>{const v=st.posSpend?.[pos]||0;return`<div style="height:4px;background:var(--s2);border-radius:2px;overflow:hidden"><div style="height:100%;width:${Math.round(v/100*100)}%;background:${COLORS_SEASON[year]||posColor(pos)};border-radius:2px;opacity:.75"></div></div>`;}).join('')}
                 </div>
-                <div style="height:4px;background:var(--s2);border-radius:2px;overflow:hidden">
-                  <div style="height:100%;width:${Math.round(v25/100*100)}%;background:${posColor(pos)};border-radius:2px;opacity:.8"></div>
-                </div>
-              </div>
-              <span style="font-size:10px;width:48px;text-align:right;color:var(--muted2)">${fmt(v24)} → ${fmt(v25)}</span>
-              <span style="font-size:10px;width:36px;text-align:right;color:${d>2?'var(--red)':d<-2?'var(--green)':'var(--muted)'}">${d>=0?'+':''}${fmt(d)}</span>
-            </div>`;
-          }).join('')}
-        </div>`:''}
-      </div>`;
+                <span style="font-size:10px;width:36px;text-align:right;color:${posColor(pos)}">${fmt(seasons2.reduce((t,s)=>t+(s.st.posSpend?.[pos]||0),0))}</span>
+              </div>`;
+            }).join('')}
+          </div>`:''}
+        </div>`;
     })()}
     ${renderBidsSection(name, s, 2025)}
     ${(()=>{
-      const s24=APP.stats2024[name];
+      const _histS24=APP.historySeasons?.find(hs=>String(hs.season)==="2024"); const s24=_histS24?.stats[name]||null;
       if(!s24) return '';
       return renderBidsSection(name, s24, 2024);
     })()}
 
     <div class="sec">2025 overbid analysis</div>
     <div class="overbid-wrap">${renderOverbidSection(name, 2025)}</div>
-    ${Object.keys(APP.stats2024).length>0?`<div class="sec">2024 overbid analysis</div><div class="overbid-wrap">${renderOverbidSection(name,2024)}</div>`:""}
+    ${APP.historySeasons?.length?`<div class="sec">Historical overbid analysis</div><div class="overbid-wrap">${renderOverbidSection(name,"all")}</div>`:""}
     <div class="sec">Tendencies & scouting report</div>
     <div class="tendency-box">${renderTendencies(name,s)}</div>`;
 
@@ -1374,7 +1358,7 @@ function calcBidRecommendation(pos, competitors){
 
     // Pull tendencies from stats
     const s25=APP.stats[name]||{};
-    const s24=APP.stats2024[name]||{};
+    const _h24=APP.historySeasons?.find(s=>String(s.season)==="2024"); const s24=_h24?.stats[name]||{};
     const arch=archetype(s25);
 
     if(!intelAll||intelAll.empty){
@@ -1721,7 +1705,7 @@ function renderWarRoom(){
         <div class="mn-grid">
           ${managers.map(m=>{
             const s=APP.stats[m]||{totalSpent:0,bidCount:0,maxBid:0,remainingFAAB:null};
-            const s24=APP.stats2024[m]||{totalSpent:0};
+            const _rh24=APP.historySeasons?.find(s=>String(s.season)==="2024"); const s24=_rh24?.stats[m]||{totalSpent:0};
             const arch=archetype(s);
             return`<div class="mn-card">
               <div class="mn-name" style="color:${nameClass(m)||'var(--text)'}">${m}${m===WINNER?' 🏆':''}</div>
@@ -2033,7 +2017,7 @@ function renderTrending(){
 
 // ── RIVALRY MATRIX ───────────────────────────────────────────────────────────
 function buildRivalryData(season){
-  const weeklySource=season===2024?APP.weeklyData2024:APP.weeklyData;
+  const _whs=APP.historySeasons?.find(hs=>String(hs.season)===String(season)); const weeklySource=(season===2025||season==="2025")?APP.weeklyData:(_whs?.weeklyData||APP.weeklyData);
   const managers=Object.values(ROSTER_MAP);
 
   // rivalry[A][B] = {won, lost, totalBids, dollarWon, dollarLost, auctions:[]}
@@ -2248,128 +2232,89 @@ function showRivalryDrill(rowMgr, colMgr){
 
 // ── POSITION INTELLIGENCE ─────────────────────────────────────────────────────
 function buildPositionIntel(name, season){
-  // For 'all' — merge both seasons into a combined stats object
-  let s, s_other;
+  // Get stats for this manager for the requested season(s)
+  // season = 2025|2024|2023|2022|'all'
+  let bids=[], failedBids=[], posSpend={};
+
+  const getSeasonStats=yr=>{
+    if(String(yr)==='2025') return APP.stats[name]||null;
+    const hs=APP.historySeasons?.find(s=>String(s.season)===String(yr));
+    return hs?.stats[name]||null;
+  };
+
   if(season==='all'){
-    const s25=APP.stats[name]||{bids:[],failedBids:[],posSpend:{}};
-    const s24=APP.stats2024[name]||{bids:[],failedBids:[],posSpend:{}};
-    // Merge bids, tagging each with season for context
-    const bids25=(s25.bids||[]).map(b=>({...b,season:2025}));
-    const bids24=(s24.bids||[]).map(b=>({...b,season:2024}));
-    const fail25=(s25.failedBids||[]).map(b=>({...b,season:2025}));
-    const fail24=(s24.failedBids||[]).map(b=>({...b,season:2024}));
-    s={
-      bids:[...bids25,...bids24],
-      failedBids:[...fail25,...fail24],
-      posSpend:{}
-    };
-    // Merge posSpend
-    Object.entries(s25.posSpend||{}).forEach(([p,v])=>{s.posSpend[p]=(s.posSpend[p]||0)+v;});
-    Object.entries(s24.posSpend||{}).forEach(([p,v])=>{s.posSpend[p]=(s.posSpend[p]||0)+v;});
-    s_other=null; // no YoY comparison in all-time view
+    // Merge all available seasons
+    const allSeasons=['2025',...(APP.historySeasons||[]).map(s=>s.season).filter(y=>y!=='2025')];
+    allSeasons.forEach(yr=>{
+      const st=getSeasonStats(yr);
+      if(!st)return;
+      (st.bids||[]).forEach(b=>bids.push({...b,season:yr}));
+      (st.failedBids||[]).forEach(b=>failedBids.push({...b,season:yr}));
+      Object.entries(st.posSpend||{}).forEach(([p,v])=>{posSpend[p]=(posSpend[p]||0)+v;});
+    });
   } else {
-    s = season===2024 ? APP.stats2024[name] : APP.stats[name];
-    s_other = season===2024 ? APP.stats[name] : APP.stats2024[name];
+    const st=getSeasonStats(season);
+    if(!st) return {};
+    bids=(st.bids||[]).map(b=>({...b,season}));
+    failedBids=(st.failedBids||[]).map(b=>({...b,season}));
+    posSpend=st.posSpend||{};
   }
-  if(!s) return {};
 
-  const positions = ['RB','WR','QB','TE','DEF','K'];
-  const result = {};
+  const s={bids,failedBids,posSpend};
+  const positions=['RB','WR','QB','TE','DEF','K'];
+  const result={};
 
-  positions.forEach(pos => {
-    // All winning bids at this position
-    const wonBids = s.bids.filter(b => b.pos === pos);
-    // All attempted bids (won + failed) at this position
-    const failedBids = (s.failedBids||[]).filter(b => b.pos === pos);
-    const allBids = [
-      ...wonBids.map(b=>({...b, won:true})),
-      ...failedBids.map(b=>({...b, won:false}))
-    ].sort((a,b)=>a.week-b.week);
+  positions.forEach(pos=>{
+    const wonBids=s.bids.filter(b=>b.pos===pos);
+    const failed=(s.failedBids||[]).filter(b=>b.pos===pos);
+    const allBids=[...wonBids.map(b=>({...b,won:true})),...failed.map(b=>({...b,won:false}))].sort((a,b)=>a.week-b.week);
+    if(!allBids.length){result[pos]={pos,empty:true};return;}
 
-    if(!allBids.length){ result[pos]={pos,empty:true}; return; }
+    const amounts=allBids.map(b=>b.bid).sort((a,b)=>a-b);
+    const wonAmounts=wonBids.map(b=>b.bid).sort((a,b)=>a-b);
+    const median=amounts[Math.floor(amounts.length/2)];
+    const mean=Math.round(amounts.reduce((s,v)=>s+v,0)/amounts.length);
+    const max=Math.max(...amounts);
+    const maxWon=wonAmounts.length?Math.max(...wonAmounts):0;
+    const totalSpent=wonBids.reduce((s,b)=>s+b.bid,0);
 
-    const amounts = allBids.map(b=>b.bid).sort((a,b)=>a-b);
-    const wonAmounts = wonBids.map(b=>b.bid).sort((a,b)=>a-b);
+    const outlierThreshold=Math.max(median*2,median+8,10);
+    const outliers=allBids.filter(b=>b.bid>=outlierThreshold&&b.bid>5);
+    const normalBids=allBids.filter(b=>!outliers.find(o=>o===b));
+    const normalAmounts=normalBids.map(b=>b.bid);
+    const typicalMax=normalAmounts.length?Math.max(...normalAmounts):max;
+    const typicalMedian=normalAmounts.length?normalAmounts.sort((a,b)=>a-b)[Math.floor(normalAmounts.length/2)]:median;
 
-    // Statistical measures
-    const median = amounts[Math.floor(amounts.length/2)];
-    const mean = Math.round(amounts.reduce((s,v)=>s+v,0)/amounts.length);
-    const max = Math.max(...amounts);
-    const maxWon = wonAmounts.length ? Math.max(...wonAmounts) : 0;
-    const p75 = amounts[Math.floor(amounts.length*0.75)] || max;
-    const totalSpent = wonBids.reduce((s,b)=>s+b.bid,0);
+    let threat,threatColor,threatBg;
+    if(totalSpent>=20||maxWon>=15){threat='High threat';threatColor='var(--red)';threatBg='threat-high';}
+    else if(totalSpent>=8||maxWon>=6){threat='Moderate';threatColor='var(--amber)';threatBg='threat-mid';}
+    else{threat='Low threat';threatColor='var(--muted2)';threatBg='threat-low';}
 
-    // Outlier detection: bids > 2x median AND > median + 8 (avoid flagging $2 vs $1)
-    const outlierThreshold = Math.max(median*2, median+8, 10);
-    const outliers = allBids.filter(b => b.bid >= outlierThreshold && b.bid > 5);
-    const normalBids = allBids.filter(b => !outliers.find(o=>o===b));
-    const normalAmounts = normalBids.map(b=>b.bid);
-    const typicalMax = normalAmounts.length ? Math.max(...normalAmounts) : max;
-    const typicalMedian = normalAmounts.length ?
-      normalAmounts.sort((a,b)=>a-b)[Math.floor(normalAmounts.length/2)] : median;
-
-    // YoY comparison
-    const otherBids = s_other ? (s_other.bids||[]).filter(b=>b.pos===pos) : [];
-    const otherSpent = otherBids.reduce((s,b)=>s+b.bid,0);
-    const otherMax = otherBids.length ? Math.max(...otherBids.map(b=>b.bid)) : 0;
-
-    // Threat level
-    let threat, threatColor, threatBg;
-    if(totalSpent>=20 || maxWon>=15){
-      threat='High threat'; threatColor='var(--red)'; threatBg='threat-high';
-    } else if(totalSpent>=8 || maxWon>=6){
-      threat='Moderate'; threatColor='var(--amber)'; threatBg='threat-mid';
+    const insights=[];
+    if(outliers.length>0){
+      insights.push(`Typical ceiling is <strong>${fmt(typicalMax)}</strong> — outlier spike${outliers.length>1?'s':''} of <strong>${fmt(max)}</strong> likely situational.`);
     } else {
-      threat='Low threat'; threatColor='var(--muted2)'; threatBg='threat-low';
+      insights.push(`Hard ceiling appears to be <strong>${fmt(max)}</strong> — no outliers detected.`);
     }
-
-    // Insight text
-    const insights = [];
-
-    // Ceiling insight
-    if(outliers.length > 0){
-      insights.push(`Typical ceiling is <strong>${fmt(typicalMax)}</strong> — outlier spike${outliers.length>1?'s':''} of <strong>${fmt(max)}</strong> in Wk ${outliers[0].week} likely situational.`);
+    if(typicalMedian===0&&allBids.length>0){
+      insights.push(`Relies heavily on <strong>$0 priority bids</strong> at ${pos}.`);
+    } else if(typicalMax-typicalMedian<=2&&allBids.length>=3){
+      insights.push(`Very consistent bidder at ${pos} — bids cluster around <strong>${fmt(typicalMedian)}</strong>.`);
     } else {
-      insights.push(`Hard ceiling appears to be <strong>${fmt(max)}</strong> — no outliers detected. Reliable upper bound for 2026 planning.`);
+      insights.push(`Typical range <strong>${fmt(typicalMedian)}–${fmt(typicalMax)}</strong>.`);
+    }
+    if(season==='all'&&allBids.length>0){
+      const activeSzns=[...new Set(allBids.map(b=>b.season).filter(Boolean))];
+      if(activeSzns.length>1) insights.push(`Active across <strong>${activeSzns.length} seasons</strong> (${activeSzns.sort().join(', ')}) — ${allBids.length} total bids.`);
+    }
+    if(wonBids.length===0&&failed.length>0){
+      insights.push(`Bid on ${pos} <strong>${failed.length}x</strong> but never won — consistently outbid here.`);
+    } else if(wonBids.length>0&&failed.length===0){
+      insights.push(`Won every ${pos} bid placed.`);
     }
 
-    // Range insight
-    if(typicalMedian === 0 && allBids.length > 0){
-      insights.push(`Relies heavily on <strong>$0 priority bids</strong> at ${pos} — rarely commits real FAAB here.`);
-    } else if(typicalMax - typicalMedian <= 2 && allBids.length >= 3){
-      insights.push(`Very consistent bidder at ${pos} — bids cluster tightly around <strong>${fmt(typicalMedian)}</strong>.`);
-    } else {
-      insights.push(`Typical range <strong>${fmt(typicalMedian)}–${fmt(typicalMax)}</strong> (excluding outliers).`);
-    }
-
-    // YoY shift — only show for single season views
-    if(season!=='all' && s_other && (totalSpent > 0 || otherSpent > 0)){
-      const delta = totalSpent - otherSpent;
-      const maxDelta = maxWon - otherMax;
-      if(Math.abs(delta) >= 5){
-        insights.push(`${season===2025?'2025':'2024'} spend ${delta>0?'up':'down'} <strong>${fmt(Math.abs(delta))}</strong> vs prior season${Math.abs(maxDelta)>=5?`, ceiling ${maxDelta>0?'rose':'dropped'} by ${fmt(Math.abs(maxDelta))}`:''}. ${delta>0?'Getting more aggressive here.':'Pulling back at this position.'}`);
-      }
-    } else if(season==='all' && allBids.length>0){
-      // For all-time, note how many seasons the player appeared
-      const seasons=[...new Set(allBids.map(b=>b.season).filter(Boolean))];
-      if(seasons.length>1) insights.push(`Data spans <strong>the 2025 season</strong> (${allBids.length} total bids).`);
-    }
-
-    // Activity level
-    if(wonBids.length === 0 && failedBids.length > 0){
-      insights.push(`Bid on ${pos} <strong>${failedBids.length}x</strong> but never won one — consistently outbid at this position.`);
-    } else if(wonBids.length > 0 && failedBids.length === 0){
-      insights.push(`Won every ${pos} bid placed — either targets low-competition players or has perfect timing.`);
-    }
-
-    result[pos] = {
-      pos, empty:false, threat, threatColor, threatBg,
-      allBids, wonBids, failedBids, outliers,
-      median, mean, max, maxWon, p75, totalSpent, typicalMax, typicalMedian,
-      otherSpent, otherMax, insights
-    };
+    result[pos]={pos,empty:false,threat,threatColor,threatBg,allBids,wonBids,failedBids:failed,outliers,median,mean,max,maxWon,totalSpent,typicalMax,typicalMedian,insights};
   });
-
   return result;
 }
 
@@ -2646,13 +2591,13 @@ function parseSeasonData(weekResults, rosterMap, playerMap, faabLeft){
 // ── History view renderer ─────────────────────────────────────────────────
 function renderHistory(){
   const el=document.getElementById('history-content');
-  if(!Object.keys(APP.stats2024).length){
+  if(!APP.historySeasons?.length){
     el.innerHTML=`<div style="color:var(--muted);font-size:12px;padding:2rem 0;text-align:center">2024 data still loading...</div>`;
     return;
   }
 
   const managers=Object.keys(ROSTER_MAP).map(r=>ROSTER_MAP[r]);
-  const s25=APP.stats; const s24=APP.stats2024;
+  const s25=APP.stats; const s24=(APP.historySeasons?.find(s=>String(s.season)==="2024"))||{stats:{}};
 
   // League-level summary cards
   const spend25=managers.reduce((t,n)=>t+(s25[n]?.totalSpent||0),0);
@@ -2960,32 +2905,41 @@ async function loadHistory(){
   const el=document.getElementById('history-content');
   if(!el)return;
 
+  const updateStatus=(msg)=>{
+    if(el) el.innerHTML=`<div style="color:var(--muted2);font-size:12px;padding:2rem 0;text-align:center">
+      <div class="spin" style="display:inline-block;margin-bottom:10px"></div><br>${msg}</div>`;
+  };
+
   try{
-    const updateStatus=(msg)=>{
-      if(el) el.innerHTML=`<div style="color:var(--muted2);font-size:12px;padding:2rem 0;text-align:center">
-        <div class="spin" style="display:inline-block;margin-bottom:10px"></div><br>${msg}</div>`;
-    };
     updateStatus('Finding season history...');
 
-    // Step 1: Walk the chain to collect all league IDs + basic info (fast, sequential by necessity)
+    // Step 1: Walk the previous_league_id chain to collect all season IDs
     const leagueInfos=[];
     let currentId=LEAGUE;
     let safety=0;
     while(currentId && safety<8){
       safety++;
-      const info=await fetchJ(`https://api.sleeper.app/v1/league/${currentId}`).catch(()=>null);
-      if(!info) break;
+      let info;
+      try{ info=await fetchJ(`https://api.sleeper.app/v1/league/${currentId}`); }
+      catch(e){ console.warn('Chain walk failed at',currentId,e); break; }
+      if(!info){ break; }
       leagueInfos.push({id:currentId, info});
       currentId=info.previous_league_id||null;
     }
 
-    updateStatus(`Loading ${leagueInfos.length} seasons in parallel...`);
+    if(!leagueInfos.length){
+      el.innerHTML=`<div style="color:var(--red);font-size:11px;padding:1rem;background:rgba(248,113,113,.08);border-radius:8px">
+        Could not load season history — league info fetch failed. Check console for details.</div>`;
+      return;
+    }
+
+    updateStatus(`Found ${leagueInfos.length} seasons (${leagueInfos.map(l=>l.info.season).join(', ')}) — loading in parallel...`);
 
     // Step 2: Fetch all season data in parallel
     const seasonResults=await Promise.all(leagueInfos.map(async ({id,info})=>{
       const [rosters,users,weekResults]=await Promise.all([
-        fetchJ(`https://api.sleeper.app/v1/league/${id}/rosters`).catch(()=>[]),
-        fetchJ(`https://api.sleeper.app/v1/league/${id}/users`).catch(()=>[]),
+        fetchJ(`https://api.sleeper.app/v1/league/${id}/rosters`).catch(e=>{console.warn('rosters fail',id,e);return[];}),
+        fetchJ(`https://api.sleeper.app/v1/league/${id}/users`).catch(e=>{console.warn('users fail',id,e);return[];}),
         Promise.all(Array.from({length:18},(_,i)=>
           fetchJ(`https://api.sleeper.app/v1/league/${id}/transactions/${i+1}`).catch(()=>[])
         ))
@@ -2999,19 +2953,52 @@ async function loadHistory(){
       rosters.forEach(r=>{ faabLeft[r.roster_id]=BUDGET-(r.settings?.waiver_budget_used??0); });
 
       const {stats,weeklyData}=parseSeasonData(weekResults,rosterMap,APP.playerMap,faabLeft);
-      const winner=info.metadata?.latest_league_winner_roster_id
-        ? rosterMap[info.metadata.latest_league_winner_roster_id]
-        : null;
+
+      // Try to determine champion - check multiple metadata fields Sleeper uses
+      const winnerRosterId=info.metadata?.latest_league_winner_roster_id
+        || info.metadata?.league_winner_roster_id
+        || null;
+      const winner=winnerRosterId ? rosterMap[winnerRosterId] : null;
 
       return{id, season:info.season||'?', name:info.name||'The Boys League',
              rosterMap, stats, weeklyData, faabLeft, winner};
     }));
 
     APP.historySeasons=seasonResults;
+
+    // ── Also enrich APP.stats and APP.weeklyData with all-time history ──────
+    // Build allTimeStats: merge all seasons into one stats object per manager
+    const allTimeStats={};
+    seasonResults.forEach(s=>{
+      Object.entries(s.stats).forEach(([name,st])=>{
+        if(!allTimeStats[name]) allTimeStats[name]={totalSpent:0,bidCount:0,posSpend:{},bids:[],failedBids:[],maxBid:0,maxBidPlayer:'',weekSpend:{}};
+        allTimeStats[name].totalSpent+=st.totalSpent||0;
+        allTimeStats[name].bidCount+=st.bidCount||0;
+        allTimeStats[name].maxBid=Math.max(allTimeStats[name].maxBid,st.maxBid||0);
+        if((st.maxBid||0)>=(allTimeStats[name].maxBid)) allTimeStats[name].maxBidPlayer=st.maxBidPlayer||'';
+        Object.entries(st.posSpend||{}).forEach(([p,v])=>{allTimeStats[name].posSpend[p]=(allTimeStats[name].posSpend[p]||0)+v;});
+        (st.bids||[]).forEach(b=>allTimeStats[name].bids.push({...b,season:s.season}));
+        (st.failedBids||[]).forEach(b=>allTimeStats[name].failedBids.push({...b,season:s.season}));
+      });
+    });
+    Object.values(allTimeStats).forEach(st=>{
+      st.avgBid=st.bidCount>0?st.totalSpent/st.bidCount:0;
+    });
+    APP.allTimeStats=allTimeStats;
+
+    // Also build allTimeWeeklyData (keyed by season+week)
+    const allTimeWeeklyData={};
+    seasonResults.forEach(s=>{
+      Object.entries(s.weeklyData||{}).forEach(([wk,wd])=>{
+        allTimeWeeklyData[`${s.season}_${wk}`]=wd;
+      });
+    });
+    APP.allTimeWeeklyData=allTimeWeeklyData;
+
     renderHistory(seasonResults);
 
   }catch(err){
-    if(el) el.innerHTML=`<div style="color:var(--red);font-size:11px;padding:1rem">Failed to load history: ${err.message}</div>`;
+    if(el) el.innerHTML=`<div style="color:var(--red);font-size:11px;padding:1rem">History load error: ${err.message}</div>`;
     console.error('History load error:',err);
   }
 }
