@@ -1,4 +1,5 @@
 
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -686,7 +687,7 @@ function showView(v){
   document.querySelectorAll('.view').forEach(el=>el.classList.remove('active'));
   document.getElementById('view-'+v).classList.add('active');
   document.querySelectorAll('.nav-tab').forEach((t,i)=>{
-    t.classList.toggle('active',['overview','managers','weekly','rivals','history','warroom'][i]===v);
+    const _tabs=['overview','managers','weekly','rivals','history','live','warroom'];t.classList.toggle('active',_tabs[i]===v);
   });
   if(v==='managers'){
     document.getElementById('mgr-grid-view').style.display='block';
@@ -3517,12 +3518,13 @@ function renderLive(){
 }
 
 // ── Hook showView to lazy-load History + Live ─────────────────────────────────
+// Patch the original showView to add lazy-loading for History + Live tabs
 const _origShowView=showView;
-function showView(v){
+showView=function(v){
   _origShowView(v);
   if(v==='history'&&!APP.historySeasons) loadHistory();
   if(v==='live'&&!_liveLoaded) loadLive();
-}
+};
 
 main();
 </script>
